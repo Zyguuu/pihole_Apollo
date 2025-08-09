@@ -1,0 +1,105 @@
+-- ~/.config/nvim/init.lua
+-- Minimalny Neovim dla C++ (LSP + completion + treesitter + telescope)
+
+-- leader
+vim.g.mapleader = ' '
+
+-- podstawowe opcje
+local o = vim.opt
+o.number = true
+o.relativenumber = true
+o.expandtab = true
+o.shiftwidth = 2
+o.tabstop = 2
+o.smartindent = true
+o.clipboard = 'unnamedplus'
+
+-- bootstrap lazy.nvim
+local lazypath = vim.fn.stdpath('data') .. '/lazy/lazy.nvim'
+if not vim.loop.fs_stat(lazypath) then
+  vim.fn.system({
+    'git', 'clone', '--filter=blob:none',
+    'https://github.com/folke/lazy.nvim.git',
+    '--branch=stable', lazypath
+  })
+end
+vim.opt.rtp:prepend(lazypath)
+
+-- wtyczki
+require('lazy').setup({
+  'nvim-lua/plenary.nvim',
+  'neovim/nvim-lspconfig',
+  { 'williamboman/mason.nvim', build = function() pcall(vim.cmd, 'MasonUpdate') end },
+  'williamboman/mason-lspconfig.nvim',
+  'hrsh7th/nvim-cmp',
+  'hrsh7th/cmp-nvim-lsp',
+  'L3MON4D3/LuaSnip',
+  'saadparwaiz1/cmp_luasnip',
+  { 'nvim-treesitter/nvim-treesitter', build = ':TSUpdate' },
+  { 'nvim-telescope/telescope.nvim', dependencies = { 'nvim-lua/plenary.nvim' } },
+})
+
+-- mason (zarządzanie LSP / narzędziami)
+require('mason').setup()
+require('mason-lspconfig').setup({ ensure_installed = { 'clangd' } })
+
+-- cmp i lsp capabilities
+local capabilities = require('cmp_nvim_lsp').default_capabilities()
+
+-- funkcja on_attach (klawisze pomocnicze dla LSP)
+local on_attach = function(_, bufnr)
+  local opts = { noremap=true, silent=true, buffer=bufnr }
+  vim.keymap.set('n','gd', vim.lsp.buf.definition, opts)
+  vim.keymap.set('n','K',  vim.lsp.buf.hover, opts)
+  vim.keymap.set('n','gi', vim.lsp.buf.implementation, opts)
+  vim.keymap.set('n','<leader>rn', vim.lsp.buf.rename, opts)
+  vim.keymap.set('n','<leader>ca', vim.lsp.buf.code_action, opts)
+  vim.keymap.set('n','<leader>f', function() vim.lsp.buf.format{ async = true } end, opts)
+end
+
+-- clangd
+require('lspconfig').clangd.setup{
+  on_attach = on_attach,
+  capabilities = capabilities,
+}
+
+-- nvim-cmp (completion) + LuaSnip
+local cmp = require('cmp')
+local luasnip = require('luasnip')
+
+cmp.setup{
+  snippet = { expand = function(args) luasnip.lsp_expand(args.body) end },
+  mapping = cmp.mapping.preset.insert({
+    ['<C-Space>'] = cmp.mapping.complete(),
+    ['<CR>'] = cmp.mapping.confirm({ select = true }),
+    ['<Tab>'] = cmp.mapping(function(fallback)
+      if cmp.visible() then cmp.select_next_item()
+      elseif luasnip.expand_or_jumpable() then luasnip.expand_or_jump()
+      else fallback()
+      end
+    end, { 'i', 's' }),
+    ['<S-Tab>'] = cmp.mapping(function(fallback)
+      if cmp.visible() then cmp.select_prev_item()
+      elseif luasnip.jumpable(-1) then luasnip.jump(-1)
+      else fallback()
+      end
+    end, { 'i', 's' }),
+  }),
+  sources = {
+    { name = 'nvim_lsp' },
+    { name = 'luasnip' },
+  }
+}
+
+-- treesitter (kolorowanie + lepsza analiza)
+require('nvim-treesitter.configs').setup{
+  ensure_installed = { 'c', 'cpp', 'lua', 'bash' },
+  highlight = { enable = true }
+}
+
+-- telescope: szybkie wyszukiwanie (przykładowe mapy)
+vim.keymap.set('n', '<leader>ff', require('telescope.builtin').find_files, { noremap=true, silent=true })
+vim.keymap.set('n', '<leader>fg', require('telescope.builtin').live_grep,  { noremap=true, silent=true })
+
+-- (opcjonalne) krótka mapa: zapisz plik
+vim.keymap.set('n','<leader>w',':w<CR>', { noremap=true, silent=true })
